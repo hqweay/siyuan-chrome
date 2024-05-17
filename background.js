@@ -86,20 +86,22 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       }
       let markdown = "---\n\n* " + "[" + linkText + "](" + href + ")\n"
       if ("" !== excerpt) {
-        markdown += "* " + excerpt + "\n"
+        //取消摘要
+        // markdown += "* " + excerpt + "\n"
       } else {
         markdown += "\n"
       }
       markdown += "* " + getDateTime() + "\n\n---\n\n" + response.data.md
 
-      fetch(requestData.api + '/api/filetree/createDocWithMd', {
+      const now = new Date();
+      fetch(requestData.api + "/api/filetree/createDocWithMd", {
         method: 'POST',
         headers: {
           'Authorization': 'Token ' + requestData.token,
         },
         body: JSON.stringify({
           'notebook': requestData.notebook,
-          'path': title,
+          'path': `${now.getFullYear()}/${now.getMonth() + 1}/${title}`,
           'markdown': markdown,
         }),
       }).then((response) => {
