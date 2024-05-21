@@ -86,9 +86,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       } catch (e) {
           console.warn(e)
       }
-      let markdown = "---\n\n* " + title
+      // let markdown = "---\n\n* " + title
+      let markdown = "---\n\n"
       if ("" !== siteName) {
-        markdown += " - " + siteName
+        // markdown += " - " + siteName
       }
       markdown += "\n"
       markdown += "* " + "[" + linkText + "](" + href + ")\n"

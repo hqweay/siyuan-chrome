@@ -1,4 +1,18 @@
 document.addEventListener('DOMContentLoaded', () => {
+
+    chrome.tabs.query({ currentWindow: true, active: true }, function (tabs) {
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabs[0].id },
+          func: siyuanGetReadability,
+          args: [tabs[0].id],
+        },
+        function () {
+          window.close();
+        }
+      );
+    });
+    return;
     const ipElement = document.getElementById('ip')
     const tokenElement = document.getElementById('token')
     const showTipElement = document.getElementById('showTip')
