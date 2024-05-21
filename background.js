@@ -115,6 +115,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
           'notebook': requestData.notebook,
           'path': `${now.getFullYear()}/${now.getMonth() + 1}/${title}`,
           'markdown': markdown,
+          'withMath': response.data.withMath
         }),
       }).then((response) => {
         return response.json()
