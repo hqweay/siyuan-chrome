@@ -16,7 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const ipElement = document.getElementById('ip')
     const tokenElement = document.getElementById('token')
     const showTipElement = document.getElementById('showTip')
-    const notebooksElement = document.getElementById('notebooks')
+    const searchDocElement = document.getElementById('searchDoc')
+    const parentDocElement = document.getElementById('parentDoc')
+    const tagsElement = document.getElementById('tags')
+    const assetsElement = document.getElementById('assets')
+
     ipElement.addEventListener('change', () => {
         let ip = ipElement.value;
         // 去掉结尾的斜杆 https://github.com/siyuan-note/siyuan/issues/11478
@@ -37,17 +41,40 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.storage.sync.set({
             token: tokenElement.value,
         })
-        getNotebooks(ipElement, tokenElement, notebooksElement)
+        updateSearch()
     })
     showTipElement.addEventListener('change', () => {
         chrome.storage.sync.set({
             showTip: showTipElement.checked,
         })
     })
-    notebooksElement.addEventListener('change', () => {
-        notebooksElement.setAttribute("data-id", notebooksElement.value)
+    searchDocElement.addEventListener('change', () => {
         chrome.storage.sync.set({
-            notebook: notebooksElement.value,
+            searchKey: searchDocElement.value,
+        })
+        updateSearch()
+    })
+    parentDocElement.addEventListener('change', () => {
+        const selectElement = document.getElementById('parentDoc');
+        const selectedOption = selectElement.options[selectElement.selectedIndex];
+        const notebook = selectedOption.getAttribute('data-notebook');
+        const parentDoc = selectedOption.getAttribute('data-parent');
+
+        chrome.storage.sync.set({
+            notebook: notebook,
+            parentDoc: parentDoc,
+            parentHPath: selectedOption.innerText,
+        })
+    })
+    tagsElement.addEventListener('change', () => {
+        tagsElement.value = tagsElement.value.replace(/#/g, '')
+        chrome.storage.sync.set({
+            tags: tagsElement.value,
+        })
+    })
+    assetsElement.addEventListener('change', () => {
+        chrome.storage.sync.set({
+            assets: assetsElement.checked,
         })
     })
 
@@ -79,24 +106,42 @@ document.addEventListener('DOMContentLoaded', () => {
         ip: 'http://127.0.0.1:6806',
         showTip: true,
         token: '',
+        searchKey: '',
         notebook: '',
+        parentDoc: '',
+        parentHPath: '',
+        tags: '',
+        assets: true,
     }, function (items) {
         ipElement.value = items.ip || 'http://127.0.0.1:6806'
         tokenElement.value = items.token || ''
         showTipElement.checked = items.showTip
-        notebooksElement.setAttribute("data-id", items.notebook)
-        getNotebooks(ipElement, tokenElement, notebooksElement)
+        searchDocElement.value = items.searchKey || ''
+        parentDocElement.setAttribute("data-notebook", items.notebook)
+        parentDocElement.setAttribute("data-parent", items.parentDoc)
+        parentDocElement.setAttribute("data-parenthpath", items.parentHPath)
+        tagsElement.value = items.tags || ''
+        assetsElement.checked = items.assets
+        updateSearch()
     })
 })
 
-const getNotebooks = (ipElement, tokenElement, notebooksElement) => {
-    fetch(ipElement.value + '/api/notebook/lsNotebooks', {
+const updateSearch = () => {
+    const ipElement = document.getElementById('ip')
+    const tokenElement = document.getElementById('token')
+    const searchDocElement = document.getElementById('searchDoc')
+    const parentDocElement = document.getElementById('parentDoc')
+
+    fetch(ipElement.value + '/api/filetree/searchDocs', {
         method: 'POST',
         redirect: "manual",
         headers: {
             'Authorization': 'Token ' + tokenElement.value,
         },
-        body: JSON.stringify({"flashcard": false})
+        body: JSON.stringify({
+            "k": searchDocElement.value,
+            "flashcard": false
+        })
     }).then((response) => {
         if (response.status !== 200) {
             document.getElementById('log').innerHTML = "Authentication failed"
@@ -105,32 +150,39 @@ const getNotebooks = (ipElement, tokenElement, notebooksElement) => {
         }
         return response.json()
     }).then((response) => {
-        if (response.code === 0) {
-            if (!response.data.notebooks) {
-                document.getElementById('log').innerHTML = "Please upgrade SiYuan to v1.3.5 or above"
-                return
+        if (0 !== response.code) {
+            document.getElementById('log').innerHTML = "Search docs failed"
+            return
+        }
+
+        let optionsHTML = ''
+        response.data.forEach(doc => {
+            const parentDoc = doc.path.substring(doc.path.toString().lastIndexOf('/') + 1).replace(".sy", '')
+            let selected = ""
+            if (parentDocElement.dataset.notebook === doc.box && parentDocElement.dataset.parent === parentDoc &&
+                parentDocElement.dataset.parenthpath === doc.hPath) {
+                selected = "selected";
             }
+            optionsHTML += `<option ${selected} data-notebook="${doc.box}" data-parent="${parentDoc}">${escapeHtml(doc.hPath)}</option>`
+        })
+        parentDocElement.innerHTML = optionsHTML
 
-            if (response.data.notebooks.length > 0) {
-                let optionsHTML = ''
-                response.data.notebooks.forEach(notebook => {
-                    if (notebook.closed) {
-                        return
-                    }
-
-                    optionsHTML += `<option value="${notebook.id}">${escapeHtml(notebook.name)}</option>`
-                })
-                notebooksElement.innerHTML = optionsHTML
-                notebooksElement.value = notebooksElement.getAttribute("data-id")
-
+        if (parentDocElement.selectedOptions && parentDocElement.selectedOptions.length > 0) {
+            let selected = parentDocElement.querySelector('option[selected]')
+            if (!selected) {
+                selected = parentDocElement.selectedOptions[0]
                 chrome.storage.sync.set({
-                    notebook: notebooksElement.value,
+                    notebook: selected.getAttribute("data-notebook"),
+                    parentDoc: selected.getAttribute("data-parent"),
+                    parentHPath: selected.innerText,
                 })
-            } else {
-                document.getElementById('log').innerHTML = "Please create a notebook before"
             }
         } else {
-            document.getElementById('log').innerHTML = "Get notebooks failed"
+            chrome.storage.sync.set({
+                notebook: '',
+                parentDoc: '',
+                parentHPath: ''
+            })
         }
     })
 }
@@ -165,7 +217,11 @@ const siyuanGetReadability = (tabId) => {
                 item.classList.add("hljs-cmt")
             })
 
-            const article = new Readability(document.cloneNode(true), {keepClasses: true, charThreshold: 16, debug: true }).parse()
+            const article = new Readability(document.cloneNode(true), {
+                keepClasses: true,
+                charThreshold: 16,
+                debug: true
+            }).parse()
             const tempElement = document.createElement('div')
             tempElement.innerHTML = article.content
             // console.log(article)
