@@ -20,6 +20,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const parentDocElement = document.getElementById('parentDoc')
     const tagsElement = document.getElementById('tags')
     const assetsElement = document.getElementById('assets')
+    const expElement = document.getElementById('exp')
+    const expGroupElement = document.getElementById('expGroup')
+    const expSpanElement = document.getElementById('expSpan')
+    const expBoldElement = document.getElementById('expBold')
+    const expItalicElement = document.getElementById('expItalic')
+    const expRemoveImgLinkElement = document.getElementById('expRemoveImgLink')
+    const languageElement = document.getElementById('language')
 
     ipElement.addEventListener('change', () => {
         let ip = ipElement.value;
@@ -77,6 +84,44 @@ document.addEventListener('DOMContentLoaded', () => {
             assets: assetsElement.checked,
         })
     })
+    expSpanElement.addEventListener('change', () => {
+        chrome.storage.sync.set({
+            expSpan: expSpanElement.checked,
+        })
+    })
+    expBoldElement.addEventListener('change', () => {
+        chrome.storage.sync.set({
+            expBold: expBoldElement.checked,
+        })
+    })
+    expItalicElement.addEventListener('change', () => {
+        chrome.storage.sync.set({
+            expItalic: expItalicElement.checked,
+        })
+    })
+    expRemoveImgLinkElement.addEventListener('change', () => {
+        chrome.storage.sync.set({
+            expRemoveImgLink: expRemoveImgLinkElement.checked,
+        })
+    })
+    expElement.addEventListener('change', function () {
+        if (expElement.checked) {
+            expGroupElement.style.display = 'block';
+        } else {
+            expGroupElement.style.display = 'none';
+        }
+    });
+    languageElement.addEventListener('change', () => {
+        const langCode = languageElement.value;
+        console.log("langCode="+langCode);
+
+        siyuanLoadLanguageFile(langCode, (data) => {
+            siyuanTranslateDOM(data);
+        });
+        chrome.storage.sync.set({
+            langCode: langCode,
+        })
+    })
 
     const eyeElement = document.querySelector('.b3-icon')
     eyeElement.addEventListener('click', () => {
@@ -103,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
     })
 
     chrome.storage.sync.get({
+        langCode: siyuanGetDefaultLangCode(),
         ip: 'http://127.0.0.1:6806',
         showTip: true,
         token: '',
@@ -112,7 +158,15 @@ document.addEventListener('DOMContentLoaded', () => {
         parentHPath: '',
         tags: '',
         assets: true,
-    }, function (items) {
+        expSpan: true,
+        expBold: false,
+        expItalic: false,
+        expRemoveImgLink: false,
+    }, async function (items) {
+        siyuanLoadLanguageFile(items.langCode, (data) => {
+            siyuanTranslateDOM(data); // 在这里使用加载的数据
+            languageElement.value = items.langCode;
+        });
         ipElement.value = items.ip || 'http://127.0.0.1:6806'
         tokenElement.value = items.token || ''
         showTipElement.checked = items.showTip
@@ -122,6 +176,10 @@ document.addEventListener('DOMContentLoaded', () => {
         parentDocElement.setAttribute("data-parenthpath", items.parentHPath)
         tagsElement.value = items.tags || ''
         assetsElement.checked = items.assets
+        expSpanElement.checked = items.expSpan
+        expBoldElement.checked = items.expBold
+        expItalicElement.checked = items.expItalic
+        expRemoveImgLinkElement.checked = items.expRemoveImgLink
         updateSearch()
     })
 })
@@ -196,13 +254,13 @@ const escapeHtml = (unsafe) => {
         .replace(/'/g, "&#039;");
 }
 
-const siyuanGetReadability = (tabId) => {
+const siyuanGetReadability = async (tabId) => {
     try {
-        siyuanShowTip('Clipping, please wait a moment...', 60 * 1000)
+        siyuanShowTipByKey("tip_clipping", 60 * 1000)
     } catch (e) {
-        alert("After installing the SiYuan extension for the first time, please refresh the page before using it")
-        window.location.reload()
-        return
+        alert(chrome.i18n.getMessage("tip_first_time"));
+        window.location.reload();
+        return;
     }
 
     try {
@@ -212,11 +270,8 @@ const siyuanGetReadability = (tabId) => {
             item.classList.add("hljs-cmt")
         })
 
-        // 网页换行用span样式word-break的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
-        // 处理会换行的span后添加 <br>，让kernel能识别到换行
-        siyuanSpansAddBr(document)
-        const clonedDoc = document.cloneNode(true);
-        siyuanSpansDelBr(document)
+        // 重构并合并Readability前处理 https://github.com/siyuan-note/siyuan/issues/13306
+        const clonedDoc = await siyuanGetCloneNode(document);
 
         const article = new Readability(clonedDoc, {
             keepClasses: true,
@@ -232,4 +287,95 @@ const siyuanGetReadability = (tabId) => {
         console.error(e)
         siyuanShowTip(e.message, 7 * 1000)
     }
+}
+
+// Add i18n support https://github.com/siyuan-note/siyuan/issues/13559
+let siyuanLangData = null;
+let siyuanLangCode = null;
+
+function siyuanGetDefaultLangCode() {
+    const langCode = navigator.language || navigator.userLanguage || chrome.runtime.getManifest().default_locale;
+    const normalizedLangCode = langCode.replace('-', '_');
+    return normalizedLangCode;
+}
+
+// 合并当前语言和英语（en）翻译的函数
+async function siyuanMergeTranslations(translations, langCode) {
+    // 默认语言是英语（en）
+    const defaultLangCode = 'en';
+
+    // 加载英语（en）翻译文件
+    let defaultTranslations = {};
+
+    // 如果当前语言不是英语，则加载英语翻译文件
+    if (langCode !== defaultLangCode) {
+        const extensionId = chrome.runtime.id;
+        const enTranslationFile = `chrome-extension://${extensionId}/_locales/en/messages.json`;
+        try {
+            // 异步加载英语翻译文件
+            const response = await fetch(enTranslationFile);
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            const enData = await response.json(); // 解析JSON
+            defaultTranslations = enData; // 保存英语翻译数据
+        } catch (err) {
+            console.error("Failed to load English translation:", err);
+        }
+    }
+
+    // 合并当前语言翻译和英语翻译，缺失的字段使用英语翻译
+    const merged = { ...defaultTranslations, ...translations };
+    return merged;
+}
+
+async function siyuanLoadLanguageFile(langCode, callback) {
+    // 检查是否已经加载过数据
+    if (siyuanLangData && siyuanLangCode === langCode) {
+        // 如果已经加载，直接调用回调并传递数据
+        callback(siyuanLangData);
+        return;
+    }
+
+    // 先加载当前语言的翻译文件
+    try {
+        const extensionId = chrome.runtime.id;
+        const translationFile = `chrome-extension://${extensionId}/_locales/${langCode}/messages.json`;
+        const response = await fetch(translationFile);
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        const data = await response.json(); // 解析JSON
+
+        // 加载成功，检查并补充缺失的翻译
+        // 先把加载的翻译数据保存在全局变量中
+        const mergedData = await siyuanMergeTranslations(data, langCode); // 等待合并翻译
+        siyuanLangData = mergedData;
+        siyuanLangCode = langCode;
+
+        // 调用回调并传递数据
+        callback(mergedData);
+
+    } catch (error) {
+        console.error('There was a problem with the fetch operation:', error);
+    }
+}
+
+function siyuanTranslateDOM(translations) {
+    const elements = document.querySelectorAll('[data-i18n]');
+    elements.forEach(element => {
+        const key = element.getAttribute('data-i18n');
+        const translation = translations[key].message;
+        if (translation) {
+            if (element.placeholder !== undefined) {
+                // 翻译 placeholder 属性
+                element.placeholder = translation;
+            } else {
+                // 翻译 textContent
+                element.textContent = translation;
+            }
+        } else {
+            console.warn(`siyuanTranslateDOM Missing translation for key: ${key}`);
+        }
+    });
 }
