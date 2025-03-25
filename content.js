@@ -16,6 +16,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 return
             }
 
+            if ('reload' === request.func) {
+                window.location.reload()
+                return
+            }
+
             if ('copy' !== request.func) {
                 return
             }
@@ -104,7 +109,7 @@ const siyuanConvertBlobToBase64 = (blob) => new Promise((resolve, reject) => {
     reader.readAsDataURL(blob)
 })
 
-// 网页换行用span样式word-break的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
+// 网页换行用 span 样式 word-break 的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
 // 递归查找父元素直到找到 pre、code、span、math 或 math相关标签
 function isIgnoredElement(element) {
     // 递归查找父元素直到找到 pre、code、span、math 或 math相关标签
@@ -119,7 +124,7 @@ function isIgnoredElement(element) {
         }
 
         element = element.parentElement; // 移动到父元素
-        if(!element) {
+        if (!element) {
             break;
         }
 
@@ -135,7 +140,7 @@ function isIgnoredElement(element) {
     return false; // 没找到时返回 false
 }
 
-// 处理会换行的span后添加 <br>，让kernel能识别到换行
+// 处理会换行的 span 后添加 <br>，让内核能识别到换行
 function siyuanSpansAddBr(tempElement) {
     const spans = tempElement.querySelectorAll('span');
     if (!spans || spans.length === 0) {
@@ -177,7 +182,7 @@ function siyuanSpansAddBr(tempElement) {
     }
 };
 
-// 网页换行用span样式word-break的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
+// 网页换行用 span 样式 word-break 的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
 // 移除由 span_add_br 添加的 <br>，还原原有样式
 function siyuanSpansDelBr(tempElement) {
     const brs = tempElement.querySelectorAll('br[data-added-by-siyuan="true"]');
@@ -200,7 +205,7 @@ function siyuanProcessBoldStyle(tempElement) {
         }
 
         if (parentContainsBold(element)) {
-            return;  // 如果元素的父元素是 B 或 STRONG 标签，跳过
+            return;  // 如果元素的父元素是 <b> 或 <strong> 标签，跳过
         }
 
         // 判断是否具有 font-weight: bold
@@ -224,7 +229,7 @@ function siyuanProcessBoldStyle(tempElement) {
                         continue; // 如果是 <b> 或 <strong> 标签，跳过
                     }
                     if (parentContainsBold(childElement)) {
-                        continue;  // 如果元素的父元素是 B 或 STRONG 标签，跳过
+                        continue;  // 如果元素的父元素是 <b> 或 <strong> 标签，跳过
                     }
                     // 递归处理
                     siyuanProcessBoldStyle(childElement);
@@ -237,7 +242,8 @@ function siyuanProcessBoldStyle(tempElement) {
 function parentContainsBold(element) {
     let parent = element.parentElement;
     while (parent) {
-        if (parent.tagName === 'B' || parent.tagName === 'STRONG') {
+        if (parent.tagName === 'B' || parent.tagName === 'STRONG' ||
+            parent.tagName === 'H1' || parent.tagName === 'H2' || parent.tagName === 'H3' || parent.tagName === 'H4' || parent.tagName === 'H5' || parent.tagName === 'H6') {
             return true;
         }
         parent = parent.parentElement;
@@ -366,12 +372,82 @@ function siyuanRemoveImgLink(tempElement) {
     const images = tempElement.querySelectorAll('img');
     images.forEach(image => {
         const parent = image.parentElement;
+        if (!parent) {
+            return;
+        }
+
         if (parent.tagName === 'A') {
             const grandParent = parent.parentElement;
+            if (!grandParent) {
+                return;
+            }
             grandParent.insertBefore(image, parent);
             parent.remove();
         }
     });
+}
+
+function adaptMSN(tempDoc) {
+    if (tempDoc.documentURI.indexOf("msn.cn") !== -1) {
+        // 删除掉其他不相关文章
+        const articles = document.querySelectorAll(".consumption-page-gridarea_content");
+        articles.forEach(article => {
+            const shadowHost = article.querySelector("views-header-wc");
+            if (!shadowHost) {
+                return;
+            }
+            if (!shadowHost.shadowRoot) {
+                return;
+            }
+
+            const titleEle = shadowHost.shadowRoot.querySelector("h1");
+            if (!titleEle) {
+                return;
+            }
+
+            if (titleEle.innerText.indexOf(tempDoc.title) === -1) {
+                article.remove();
+            }
+        });
+
+        // 将 Shadow DOM 展开
+        const shadowHosts = document.querySelectorAll('cp-article');
+        shadowHosts.forEach(element => {
+            const shadowRoot = element.shadowRoot;
+            if (!shadowRoot) {
+                return;
+            }
+
+            const slots = shadowRoot.querySelectorAll('slot');
+            slots.forEach(slot => {
+                const slotName = slot.getAttribute('name');
+                element.querySelectorAll(`[slot="${slotName}"]`).forEach(slotElement => {
+                    const imgEle = slotElement.querySelector("cp-article-image");
+                    if (!imgEle) {
+                        return;
+                    }
+                    const imgShadowRoot = imgEle.shadowRoot;
+                    if (!imgShadowRoot) {
+                        return;
+                    }
+                    const imgs = imgShadowRoot.querySelectorAll('img');
+                    if (!imgs || imgs.length === 0) {
+                        return;
+                    }
+                    slotElement.innerHTML = ""
+                    imgs.forEach(img => {
+                        slotElement.appendChild(img.cloneNode(true));
+                    });
+                    slot.innerHTML = slotElement.innerHTML;
+                });
+            });
+
+            const shadowContent = shadowRoot.innerHTML;
+            const newDiv = document.createElement('div');
+            newDiv.innerHTML = shadowContent;
+            element.parentNode.replaceChild(newDiv, element);
+        });
+    }
 }
 
 // 重构并合并 Readability 前处理 https://github.com/siyuan-note/siyuan/issues/13306
@@ -402,6 +478,9 @@ async function siyuanGetCloneNode(tempDoc) {
         };
     }
 
+    // 适配 MSN 页面 https://github.com/siyuan-note/siyuan/issues/14197
+    adaptMSN(tempDoc);
+
     // 前处理，增加可识别样式
     if (items.expBold) {
         // 替换粗体样式为内核可识别 <b> 标签 https://github.com/siyuan-note/siyuan/issues/13306
@@ -419,16 +498,50 @@ async function siyuanGetCloneNode(tempDoc) {
     }
 
     if (items.expSpan) {
-        // 网页换行用span样式word-break的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
-        // 处理会换行的span后添加 <br>，让kernel能识别到换行
+        // 网页换行用 span 样式 word-break 的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
+        // 处理会换行的 span 后添加 <br>，让内核能识别到换行
         siyuanSpansAddBr(tempDoc);
     }
 
-    // 合并嵌套的 strong 标签
+    // 合并嵌套的标签
     simplifyNestedTags(tempDoc, 'STRONG');
     simplifyNestedTags(tempDoc, 'B');
     simplifyNestedTags(tempDoc, 'I');
     simplifyNestedTags(tempDoc, 'EM');
+
+    // 如果公式被嵌套包裹，则去掉外层包裹 https://github.com/siyuan-note/siyuan/issues/14382
+    const mathElements = tempDoc.querySelectorAll('.ztext-math');
+    mathElements.forEach(mathElement => {
+        if (mathElement.parentElement.tagName === 'B' || mathElement.parentElement.tagName === 'STRONG' || mathElement.parentElement.tagName === 'I' || mathElement.parentElement.tagName === 'EM') {
+            const parent = mathElement.parentElement;
+            while (parent.firstChild) {
+                parent.parentNode.insertBefore(parent.firstChild, parent);
+            }
+            parent.remove();
+        }
+    });
+
+    // 如果行级标签包含了块级标签，则将该行级标签改为 div
+    const inlineTags = ['span', 'strong', 'b', 'i', 'em', 'a'];
+    const blockTags = ['div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'table', 'tr', 'td', 'th', 'blockquote', 'pre', 'code', 'section'];
+    inlineTags.forEach(inlineTag => {
+        const elements = document.querySelectorAll(inlineTag);
+        elements.forEach(element => {
+            let containsBlock = false;
+            blockTags.forEach(blockTag => {
+                if (element.querySelector(blockTag)) {
+                    containsBlock = true;
+                }
+            });
+            if (containsBlock) {
+                const div = document.createElement('div');
+                while (element.firstChild) {
+                    div.appendChild(element.firstChild);
+                }
+                element.parentNode.replaceChild(div, element);
+            }
+        });
+    });
 
     const clonedDoc = document.cloneNode(true);
 
@@ -444,8 +557,8 @@ async function siyuanGetCloneNode(tempDoc) {
     }
 
     if (items.expSpan) {
-        // 网页换行用span样式word-break的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
-        // 处理会换行的span后添加 <br>，让kernel能识别到换行
+        // 网页换行用 span 样式 word-break 的特殊处理 https://github.com/siyuan-note/siyuan/issues/13195
+        // 处理会换行的 span 后添加 <br>，让内核能识别到换行
         siyuanSpansDelBr(tempDoc);
     }
 
@@ -510,7 +623,7 @@ const siyuanSendUpload = async (tempElement, tabId, srcUrl, type, article, href)
                 item.setAttribute('src', src)
             }
 
-            if (-1 < item.className.indexOf("ztext-gif") &&  -1 < src.indexOf("zhimg.com")) {
+            if (-1 < item.className.indexOf("ztext-gif") && -1 < src.indexOf("zhimg.com")) {
                 // 处理知乎动图
                 src = src.replace(".jpg", ".webp")
             }

@@ -148,6 +148,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                             }),
                         })
                     }
+
+                    chrome.tabs.sendMessage(requestData.tabId, {
+                        'func': 'reload',
+                    })
                 } else {
                     chrome.tabs.sendMessage(requestData.tabId, {
                         'func': 'tip',
