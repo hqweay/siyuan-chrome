@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         expSpan: true,
         expBold: false,
         expItalic: false,
-        expRemoveImgLink: false,
+        expRemoveImgLink: true,
     }, async function (items) {
         siyuanLoadLanguageFile(items.langCode, (data) => {
             siyuanTranslateDOM(data); // 在这里使用加载的数据
