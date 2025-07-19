@@ -35,8 +35,13 @@
   "host_permissions": [
     "*://*/*"
   ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "siyuan-extension@ld246.com"
+    }
+  },
   "name": "__MSG_extension_name__",
   "options_page": "options.html",
   "description": "__MSG_extension_description__",
-  "version": "1.10.0"
+  "version": "1.12.9"
 }
