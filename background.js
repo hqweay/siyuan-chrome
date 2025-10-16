@@ -207,6 +207,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                     markdown = getDefaultMarkdown(requestData, response.data.md);
                 }
 
+                const now = new Date();
                 fetch(requestData.api + '/api/filetree/createDocWithMd', {
                     method: 'POST',
                     headers: {
@@ -216,7 +217,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                         'notebook': requestData.notebook,
                         'parentID': requestData.parentDoc,
                         'tags': requestData.tags,
-                        'path': requestData.parentHPath + "/" + title,
+                        // 'path': requestData.parentHPath + "/" + title,
+                        'path': requestData.parentHPath + "/" + `${now.getFullYear()}/${now.getMonth() + 1}/${title}`,
                         'markdown': markdown,
                         'withMath': response.data.withMath,
                         'clippingHref': requestData.href,
